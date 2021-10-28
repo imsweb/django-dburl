@@ -4,7 +4,6 @@ import collections
 import os
 import urllib.parse as urlparse
 import warnings
-from typing import Any
 
 __version__ = "1.0.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
@@ -12,12 +11,10 @@ __version_info__ = tuple(int(num) for num in __version__.split("."))
 Engine = collections.namedtuple("Engine", ["backend", "string_ports", "options"])
 
 DEFAULT_ENV = "DATABASE_URL"
-ENGINE_SCHEMES: dict[str, Engine] = {}
+ENGINE_SCHEMES = {}
 
 
-def register(
-    backend: str, schemes: Any = None, string_ports: bool = False, options: dict = None
-):
+def register(backend, schemes=None, string_ports=False, options=None):
     if schemes is None:
         schemes = [backend.rsplit(".")[-1]]
     elif isinstance(schemes, str):
@@ -66,7 +63,7 @@ def config(env=DEFAULT_ENV, default=None, **settings):
     return parse(s, **settings) if s else {}
 
 
-def parse(url, backend=None, **settings) -> dict:
+def parse(url, backend=None, **settings):
     """Parses a database URL."""
 
     if url == "sqlite://:memory:":
