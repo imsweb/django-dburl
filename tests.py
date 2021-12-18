@@ -180,7 +180,7 @@ class DatabaseTestSuite(unittest.TestCase):
     def test_parse_engine_setting(self):
         engine = "django_mysqlpool.backends.mysqlpool"
         url = "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true"
-        url = django_dburl.parse(url, engine)
+        url = django_dburl.parse(url, ENGINE=engine)
 
         assert url["ENGINE"] == engine
 
@@ -189,14 +189,14 @@ class DatabaseTestSuite(unittest.TestCase):
         os.environ[
             "DATABASE_URL"
         ] = "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true"
-        url = django_dburl.config(engine=engine)
+        url = django_dburl.config(ENGINE=engine)
 
         assert url["ENGINE"] == engine
 
     def test_parse_conn_max_age_setting(self):
         conn_max_age = 600
         url = "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true"
-        url = django_dburl.parse(url, conn_max_age=conn_max_age)
+        url = django_dburl.parse(url, CONN_MAX_AGE=conn_max_age)
 
         assert url["CONN_MAX_AGE"] == conn_max_age
 
@@ -205,7 +205,7 @@ class DatabaseTestSuite(unittest.TestCase):
         os.environ[
             "DATABASE_URL"
         ] = "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true"
-        url = django_dburl.config(conn_max_age=conn_max_age)
+        url = django_dburl.config(CONN_MAX_AGE=conn_max_age)
 
         assert url["CONN_MAX_AGE"] == conn_max_age
 

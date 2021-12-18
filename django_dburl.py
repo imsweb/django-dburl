@@ -3,7 +3,6 @@
 import collections
 import os
 import urllib.parse as urlparse
-import warnings
 
 __version__ = "1.0.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
@@ -63,7 +62,7 @@ def config(env=DEFAULT_ENV, default=None, **settings):
     return parse(s, **settings) if s else {}
 
 
-def parse(url, backend=None, **settings):
+def parse(url, **settings):
     """Parses a database URL."""
 
     if url == "sqlite://:memory:":
@@ -76,24 +75,6 @@ def parse(url, backend=None, **settings):
     url = urlparse.urlparse(url)
     engine = ENGINE_SCHEMES[url.scheme]
     options = {}
-
-    if "engine" in settings:
-        # Keep compatibility with dj-database-url for `engine` kwarg.
-        backend = settings.pop("engine")
-
-    if "conn_max_age" in settings:
-        warnings.warn(
-            "The `conn_max_age` argument is deprecated. Use `CONN_MAX_AGE` instead."
-        )
-        settings["CONN_MAX_AGE"] = settings.pop("conn_max_age")
-
-    if "ssl_require" in settings:
-        warnings.warn(
-            "The `ssl_require` argument is deprecated. "
-            "Use `OPTIONS={'sslmode': 'require'}` instead."
-        )
-        if settings.pop("ssl_require"):
-            options["sslmode"] = "require"
 
     # Split query strings from path.
     path = url.path[1:]
@@ -133,7 +114,7 @@ def parse(url, backend=None, **settings):
 
     # Update with environment configuration.
     config = {
-        "ENGINE": backend or engine.backend,
+        "ENGINE": engine.backend,
         "NAME": urlparse.unquote(path or ""),
         "USER": urlparse.unquote(url.username or ""),
         "PASSWORD": urlparse.unquote(url.password or ""),
