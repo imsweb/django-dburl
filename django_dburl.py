@@ -1,69 +1,72 @@
-# -*- coding: utf-8 -*-
-
-import collections
 import os
 import urllib.parse as urlparse
 
 __version__ = "1.0.0"
-__version_info__ = tuple(int(num) for num in __version__.split("."))
+__version_info__ = tuple(map(int, __version__.split(".")))
 
-Engine = collections.namedtuple("Engine", ["backend", "string_ports", "options"])
 
-DEFAULT_ENV = "DATABASE_URL"
 ENGINE_SCHEMES = {}
 
 
-def register(backend, schemes=None, string_ports=False, options=None):
-    if schemes is None:
-        schemes = [backend.rsplit(".")[-1]]
-    elif isinstance(schemes, str):
-        schemes = [schemes]
+class Engine:
+    def __init__(self, backend, postprocess=lambda config: None):
+        self.backend = backend
+        self.postprocess = postprocess
 
+
+def register(backend, schemes=None):
+    engine = Engine(backend)
+    schemes = schemes or [backend.rsplit(".")[-1]]
+    schemes = [schemes] if isinstance(schemes, str) else schemes
     for scheme in schemes:
         urlparse.uses_netloc.append(scheme)
-        ENGINE_SCHEMES[scheme] = Engine(backend, string_ports, options or {})
+        ENGINE_SCHEMES[scheme] = engine
+
+    def inner(func):
+        engine.postprocess = func
+        return func
+
+    return inner
 
 
-# Support all the first-party Django engines out of the box.
-register(
-    "django.db.backends.postgresql",
-    ("postgres", "postgresql", "pgsql"),
-    options={
-        "currentSchema": lambda values: {
-            "options": "-c search_path={}".format(values[-1])
-        },
-    },
-)
-register(
-    "django.contrib.gis.db.backends.postgis",
-    options={
-        "currentSchema": lambda values: {
-            "options": "-c search_path={}".format(values[-1])
-        },
-    },
-)
 register("django.contrib.gis.db.backends.spatialite")
-register(
-    "django.db.backends.mysql",
-    options={
-        "ssl-ca": lambda values: {"ssl": {"ca": values[-1]}},
-    },
-)
 register("django.contrib.gis.db.backends.mysql", "mysqlgis")
-register("django.db.backends.oracle", string_ports=True)
 register("django.contrib.gis.db.backends.oracle", "oraclegis")
 register("django.db.backends.sqlite3", "sqlite")
 
 
-def config(env=DEFAULT_ENV, default=None, **settings):
-    """Returns configured DATABASE dictionary from DATABASE_URL."""
+@register("django.db.backends.oracle")
+def stringify_port(config):
+    config["PORT"] = str(config["PORT"])
 
+
+@register("django.db.backends.mysql")
+def apply_ssl_ca(config):
+    options = config["OPTIONS"]
+    ca = options.pop("ssl-ca", None)
+    if ca:
+        options["ssl"] = {"ca": ca}
+
+
+@register("django.db.backends.postgresql", ("postgres", "postgresql", "pgsql"))
+@register("django.contrib.gis.db.backends.postgis")
+def apply_current_schema(config):
+    options = config["OPTIONS"]
+    schema = options.pop("currentSchema", None)
+    if schema:
+        options["options"] = f"-c search_path={schema}"
+
+
+def config(env="DATABASE_URL", default=None, **settings):
+    """
+    Gets a database URL from environmental variable named as 'env' value and parses it.
+    """
     s = os.environ.get(env, default)
     return parse(s, **settings) if s else {}
 
 
 def parse(url, **settings):
-    """Parses a database URL."""
+    """Parses a database URL and returns configured DATABASE dictionary."""
 
     if url == "sqlite://:memory:":
         # this is a special case, because if we pass this URL into
@@ -74,58 +77,31 @@ def parse(url, **settings):
 
     url = urlparse.urlparse(url)
     engine = ENGINE_SCHEMES[url.scheme]
-    options = {}
 
-    # Split query strings from path.
     path = url.path[1:]
-    if "?" in path and not url.query:
-        path, query = path.split("?", 1)
-    else:
-        path, query = path, url.query
-    query = urlparse.parse_qs(query)
-
     # If we are using sqlite and we have no path, then assume we
     # want an in-memory database (this is the behaviour of sqlalchemy)
     if url.scheme == "sqlite" and path == "":
         path = ":memory:"
 
-    # Handle postgres percent-encoded paths.
-    hostname = url.hostname or ""
-    if "%2f" in hostname.lower():
-        # Switch to url.netloc to avoid lower cased paths
-        hostname = url.netloc
-        if "@" in hostname:
-            hostname = hostname.rsplit("@", 1)[1]
-        if ":" in hostname:
-            hostname = hostname.split(":", 1)[0]
-        hostname = hostname.replace("%2f", "/").replace("%2F", "/")
+    query = urlparse.parse_qs(url.query)
+    options = {k: v[-1] for k, v in query.items()}
 
-    port = str(url.port) if url.port and engine.string_ports else url.port
-
-    # Pass the query string into OPTIONS.
-    for key, values in query.items():
-        if key in engine.options:
-            options.update(engine.options[key](values))
-        else:
-            options[key] = values[-1]
-
-    # Allow passed OPTIONS to override query string options.
-    options.update(settings.pop("OPTIONS", {}))
-
-    # Update with environment configuration.
     config = {
         "ENGINE": engine.backend,
         "NAME": urlparse.unquote(path or ""),
         "USER": urlparse.unquote(url.username or ""),
         "PASSWORD": urlparse.unquote(url.password or ""),
-        "HOST": hostname,
-        "PORT": port or "",
+        "HOST": urlparse.unquote(url.hostname or ""),
+        "PORT": url.port or "",
+        "OPTIONS": options,
     }
-
-    if options:
-        config["OPTIONS"] = options
+    engine.postprocess(config)
 
     # Update the final config with any settings passed in explicitly.
+    config["OPTIONS"].update(settings.pop("OPTIONS", {}))
     config.update(**settings)
 
+    if not config["OPTIONS"]:
+        config.pop("OPTIONS")
     return config

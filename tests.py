@@ -11,16 +11,8 @@ EXPECTED_POSTGRES_ENGINE = "django.db.backends.postgresql"
 
 # These were supported out of the box in dj-database-url.
 django_dburl.register("mysql.connector.django", "mysql-connector")
-django_dburl.register("sql_server.pyodbc", "mssql", string_ports=True)
-django_dburl.register(
-    "django_redshift_backend",
-    "redshift",
-    options={
-        "currentSchema": lambda values: {
-            "options": "-c search_path={}".format(values[-1])
-        },
-    },
-)
+django_dburl.register("sql_server.pyodbc", "mssql")(django_dburl.stringify_port)
+django_dburl.register("django_redshift_backend", "redshift")(django_dburl.apply_current_schema)
 
 
 class DatabaseTestSuite(unittest.TestCase):
