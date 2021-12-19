@@ -36,7 +36,13 @@ def register(backend, schemes=None):
 register("django.contrib.gis.db.backends.spatialite")
 register("django.contrib.gis.db.backends.mysql", "mysqlgis")
 register("django.contrib.gis.db.backends.oracle", "oraclegis")
-register("django.db.backends.sqlite3", "sqlite")
+
+
+@register("django.db.backends.sqlite3", "sqlite")
+def default_to_in_memory_db(config):
+    # mimic sqlalchemy behaviour
+    if config["NAME"] == "":
+        config["NAME"] = ":memory:"
 
 
 @register("django.db.backends.oracle")
@@ -82,26 +88,18 @@ def parse(url, **settings):
     try:
         url = urlparse.urlparse(url)
         engine = ENGINE_SCHEMES[url.scheme]
-
         path = url.path[1:]
-        # If we are using sqlite and we have no path, then assume we
-        # want an in-memory database (this is the behaviour of sqlalchemy)
-        if url.scheme == "sqlite" and path == "":
-            path = ":memory:"
-
         query = urlparse.parse_qs(url.query)
         options = {k: v[-1] for k, v in query.items()}
-
         config = {
             "ENGINE": engine.backend,
-            "NAME": urlparse.unquote(path or ""),
             "USER": urlparse.unquote(url.username or ""),
             "PASSWORD": urlparse.unquote(url.password or ""),
             "HOST": urlparse.unquote(url.hostname or ""),
             "PORT": url.port or "",
+            "NAME": urlparse.unquote(path),
             "OPTIONS": options,
         }
-
     except ValueError:
         raise ValueError(PARSE_ERROR_MESSAGE) from None
 
