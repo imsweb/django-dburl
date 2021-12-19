@@ -10,53 +10,106 @@ This simple Django utility allows you to utilize the
 [12factor](http://www.12factor.net/backing-services) inspired `DATABASE_URL` environment
 variable to configure your Django application.
 
-The `django_dburl.config` method returns a Django database connection dictionary,
-populated with all the data specified in your URL. You can also pass in any keyword
-argument that Django's
-[`DATABASES`](https://docs.djangoproject.com/en/3.2/ref/settings/#std:setting-OPTIONS)
-setting accepts, such as [`CONN_MAX_AGE`](https://docs.djangoproject.com/en/3.2/ref/settings/#conn-max-age)
-or [`OPTIONS`](https://docs.djangoproject.com/en/3.2/ref/settings/#std:setting-OPTIONS).
-Any querystring parameters (such as `?timeout=20`) will automatically be parsed and
-added to `OPTIONS` (`OPTIONS["timeout"] = 20` in this case).
-
-If you'd rather not use an environment variable, you can pass a URL in directly
-instead to `django_dburl.parse`.
-
-## Supported Databases
-
-All built-in Django database backends are supported. See below for more details.
-
 ## Installation
 
-```
+```sh
 pip install django-dburl
 ```
 
 ## Usage
 
-Configure your database in `settings.py` from `DATABASE_URL`:
+The `django_dburl.config()` method returns a Django database connection dictionary,
+populated with all the data specified in your `DATABASE_URL` environment variable:
 
 ```python
 import django_dburl
-DATABASES["default"] = django_dburl.config(CONN_MAX_AGE=600)
+
+DATABASES = {
+    "default": django_dburl.config(),
+    # arbitrary environment variable can be used
+    "replica": django_dburl.config("REPLICA_URL"),
+}
+```
+Given the following environment variables are defined:
+
+```sh
+export DATABASE_URL="postgres://user:password@ec2-107-21-253-135.compute-1.amazonaws.com:5431/db-name"
+# All the characters which are reserved in URL as per RFC 3986 should be urllib.parse.quote()'ed.
+export REPLICA_URL="postgres://%23user:%23password@replica-host.com/db-name?timeout=20"
 ```
 
-Provide a default:
+The aforementioned code will result in:
 
 ```python
-DATABASES['default'] = django_dburl.config(default='postgres://...')
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "USER": "user",
+        "PASSWORD": "password",
+        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+        "PORT": 5431,
+        "NAME": "db-name",
+    },
+    "replica": {
+        "ENGINE": "django.db.backends.postgresql",
+        "USER": "#user",
+        "PASSWORD": "#password",
+        "HOST": "replica-host.com",
+        "PORT": "",
+        "NAME": "db-name",
+        # Any querystring parameters are automatically parsed and added to `OPTIONS`.
+        "OPTIONS": {
+            "timeout": "20",
+        },
+    },
+}
 ```
 
-Parse an arbitrary Database URL:
+A default value can be provided which will be used when the environment variable is not set:
 
 ```python
-DATABASES['default'] = django_dburl.parse('postgres://...', CONN_MAX_AGE=600)
+DATABASES["default"] = django_dburl.config(default="sqlite://")
 ```
 
-The `CONN_MAX_AGE` option is the lifetime of a database connection in seconds
-and is available in Django 1.6+. If you do not set a value, it will default to `0`
-which is Django's historical behavior of using a new database connection on each
-request. Use `None` for unlimited persistent connections.
+If you'd rather not use an environment variable, you can pass a URL directly into `django_dburl.parse()`:
+
+```python
+DATABASES["default"] = django_dburl.parse("postgres://...")
+```
+
+You can also pass in any keyword argument that Django's
+[`DATABASES`](https://docs.djangoproject.com/en/stable/ref/settings/#databases) setting accepts,
+such as [`CONN_MAX_AGE`](https://docs.djangoproject.com/en/stable/ref/settings/#conn-max-age)
+or [`OPTIONS`](https://docs.djangoproject.com/en/stable/ref/settings/#std:setting-OPTIONS):
+
+```python
+django_dburl.config(CONN_MAX_AGE=600, TEST={"NAME": "mytestdatabase"})
+# results in:
+{
+    "ENGINE": "django.db.backends.postgresql",
+    # ...
+    "NAME": "db-name",
+    "CONN_MAX_AGE": 600,
+    "TEST": {
+        "NAME": "mytestdatabase",
+    },
+}
+
+# such usage is also possible:
+django_dburl.parse("postgres://...", **{
+    "CONN_MAX_AGE": 600,
+    "TEST": {
+        "NAME": "mytestdatabase",
+    },
+    "OPTIONS": {
+        "isolation_level": psycopg2.extensions.ISOLATION_LEVEL_SERIALIZABLE,
+    },
+})
+```
+
+`OPTIONS` will be properly merged with the parameters coming from querystring
+(keyword argument has higher priority than querystring).
+
 
 ## URL schemes
 
@@ -71,21 +124,37 @@ request. Use `None` for unlimited persistent connections.
 | Oracle       | `django.db.backends.oracle`                 | `oracle://USER:PASSWORD@HOST:PORT/NAME`    |
 | Oracle (GIS) | `django.contrib.gis.db.backends.oracle`     | `oraclegis://USER:PASSWORD@HOST:PORT/NAME` |
 
-## Registering custom schemes
+## Supported Databases
+
+All built-in Django database backends are supported. If you want to use some non-default backends,
+you need to register them first:
+
+```python
+import django_dburl
+# registration should be performed only once
+django_dburl.register("mysql.connector.django", "mysql-connector")
+
+assert django_dburl.parse("mysql-connector://user:password@host:port/db-name") == {
+    "ENGINE": "mysql.connector.django",
+    # ...other connection params
+}
+```
+
+Some backends need further config adjustments (e.g. oracle and mssql expect `PORT` to be a string).
+For such cases you can provide a post-processing function to `register()`
+(note that `register()` is used as a **decorator(!)** in this case):
 
 ```python
 import django_dburl
 
-# These were supported out of the box in dj-database-url.
-django_dburl.register("mysql.connector.django", "mysql-connector")
-django_dburl.register("sql_server.pyodbc", "mssql", string_ports=True)
-django_dburl.register(
-    "django_redshift_backend",
-    "redshift",
-    options={
-        "currentSchema": lambda values: {
-            "options": "-c search_path={}".format(values[-1])
-        },
-    },
-)
+@django_dburl.register("sql_server.pyodbc", "mssql")
+def stringify_port(config):
+    config["PORT"] = str(config["PORT"])
+
+@django_dburl.register("django_redshift_backend", "redshift")
+def apply_current_schema(config):
+    options = config["OPTIONS"]
+    schema = options.pop("currentSchema", None)
+    if schema:
+        options["options"] = f"-c search_path={schema}"
 ```
