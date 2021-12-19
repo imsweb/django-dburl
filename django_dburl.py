@@ -4,6 +4,10 @@ import urllib.parse as urlparse
 __version__ = "1.0.0"
 __version_info__ = tuple(map(int, __version__.split(".")))
 
+PARSE_ERROR_MESSAGE = (
+    "This string is not a valid url, possibly because some of its parts "
+    "is not properly urllib.parse.quote()'ed."
+)
 
 ENGINE_SCHEMES = {}
 
@@ -75,27 +79,32 @@ def parse(url, **settings):
         return {"ENGINE": ENGINE_SCHEMES["sqlite"].backend, "NAME": ":memory:"}
         # note: no other settings are required for sqlite
 
-    url = urlparse.urlparse(url)
-    engine = ENGINE_SCHEMES[url.scheme]
+    try:
+        url = urlparse.urlparse(url)
+        engine = ENGINE_SCHEMES[url.scheme]
 
-    path = url.path[1:]
-    # If we are using sqlite and we have no path, then assume we
-    # want an in-memory database (this is the behaviour of sqlalchemy)
-    if url.scheme == "sqlite" and path == "":
-        path = ":memory:"
+        path = url.path[1:]
+        # If we are using sqlite and we have no path, then assume we
+        # want an in-memory database (this is the behaviour of sqlalchemy)
+        if url.scheme == "sqlite" and path == "":
+            path = ":memory:"
 
-    query = urlparse.parse_qs(url.query)
-    options = {k: v[-1] for k, v in query.items()}
+        query = urlparse.parse_qs(url.query)
+        options = {k: v[-1] for k, v in query.items()}
 
-    config = {
-        "ENGINE": engine.backend,
-        "NAME": urlparse.unquote(path or ""),
-        "USER": urlparse.unquote(url.username or ""),
-        "PASSWORD": urlparse.unquote(url.password or ""),
-        "HOST": urlparse.unquote(url.hostname or ""),
-        "PORT": url.port or "",
-        "OPTIONS": options,
-    }
+        config = {
+            "ENGINE": engine.backend,
+            "NAME": urlparse.unquote(path or ""),
+            "USER": urlparse.unquote(url.username or ""),
+            "PASSWORD": urlparse.unquote(url.password or ""),
+            "HOST": urlparse.unquote(url.hostname or ""),
+            "PORT": url.port or "",
+            "OPTIONS": options,
+        }
+
+    except ValueError:
+        raise ValueError(PARSE_ERROR_MESSAGE) from None
+
     engine.postprocess(config)
 
     # Update the final config with any settings passed in explicitly.
