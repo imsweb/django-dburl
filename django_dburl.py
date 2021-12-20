@@ -9,6 +9,10 @@ PARSE_ERROR_MESSAGE = (
     "is not properly urllib.parse.quote()'ed."
 )
 
+UNKNOWN_SCHEME_MESSAGE = (
+    "Scheme '{}://' is unknown. Did you forget to register custom backend?"
+)
+
 ENGINE_SCHEMES = {}
 
 
@@ -100,6 +104,9 @@ def parse(url, **settings):
             "NAME": urlparse.unquote(path),
             "OPTIONS": options,
         }
+    except KeyError as e:
+        scheme = e.args[0]
+        raise ValueError(UNKNOWN_SCHEME_MESSAGE.format(scheme)) from None
     except ValueError:
         raise ValueError(PARSE_ERROR_MESSAGE) from None
 

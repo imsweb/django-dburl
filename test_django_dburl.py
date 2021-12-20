@@ -41,6 +41,12 @@ def test_credentials_quoted__ok():
     assert config["PASSWORD"] == "p#ssword!"
 
 
+def test_unknown_scheme__raise_value_error():
+    expected_message = "Scheme 'unknown-scheme://' is unknown. Did you forget to register custom backend?"
+    with pytest.raises(ValueError, match=expected_message):
+        django_dburl.parse("unknown-scheme://user:password@localhost/foobar")
+
+
 def test_provide_test_settings__add_them_to_final_config():
     settings = {
         "TEST": {
