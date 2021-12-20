@@ -243,3 +243,13 @@
       sslkey: /certs/client.myprojectuser.key
       sslmode: verify-full
       sslrootcert: /certs/ca.crt
+
+- - snowflake://uf07k1i6d8ia0v:wegauwhgeuioweg@lua32141.us-east-1/DBNAME/RAW?warehouse=WH&role=role
+  - ENGINE: django_snowflake
+    USER: uf07k1i6d8ia0v
+    PASSWORD: wegauwhgeuioweg
+    ACCOUNT: lua32141.us-east-1
+    NAME: DBNAME
+    SCHEMA: RAW
+    WAREHOUSE: WH
+    ROLE: role

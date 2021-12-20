@@ -157,4 +157,20 @@ def apply_current_schema(config):
     schema = options.pop("currentSchema", None)
     if schema:
         options["options"] = f"-c search_path={schema}"
+
+@django_dburl.register("django_snowflake", "snowflake")
+def adjust_snowflake_config(config):
+    config.pop("PORT", None)
+    config["ACCOUNT"] = config.pop("HOST")
+    name, _, schema = config["NAME"].partition("/")
+    if schema:
+        config["SCHEMA"] = schema
+        config["NAME"] = name
+    options = config.get("OPTIONS", {})
+    warehouse = options.pop("warehouse", None)
+    if warehouse:
+        config["WAREHOUSE"] = warehouse
+    role = options.pop("role", None)
+    if role:
+        config["ROLE"] = role
 ```

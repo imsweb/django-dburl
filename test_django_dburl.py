@@ -15,6 +15,24 @@ django_dburl.register("django_redshift_backend", "redshift")(
     django_dburl.apply_current_schema
 )
 
+
+@django_dburl.register("django_snowflake", "snowflake")
+def adjust_snowflake_config(config):
+    config.pop("PORT", None)
+    config["ACCOUNT"] = config.pop("HOST")
+    name, _, schema = config["NAME"].partition("/")
+    if schema:
+        config["SCHEMA"] = schema
+        config["NAME"] = name
+    options = config.get("OPTIONS", {})
+    warehouse = options.pop("warehouse", None)
+    if warehouse:
+        config["WAREHOUSE"] = warehouse
+    role = options.pop("role", None)
+    if role:
+        config["ROLE"] = role
+
+
 URL = "postgres://user:password@localhost/db-name"
 
 cases_file = pathlib.Path(__file__).parent.joinpath("test_cases.yml")
